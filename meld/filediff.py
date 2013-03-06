@@ -212,8 +212,13 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
         self._cached_match = CachedSequenceMatcher()
         self.anim_source_id = [None for buf in self.textbuffer]
         self.animating_chunks = [[] for buf in self.textbuffer]
+        self._nopad = 0
         for buf in self.textbuffer:
             buf.create_tag("inline")
+
+        # self.linediffer.single_changes(0) is still empty at this point.
+        for change in self.linediffer.single_changes(0):
+            print(change)
 
         actions = (
             ("MakePatch", None, _("Format as patch..."), None, _("Create a patch using differences between files"), self.make_patch),
@@ -1271,6 +1276,28 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
             self.text_filters = []
             self.refresh_comparison()
 
+    def xxx_init_paddings(self):
+        if self._nopad:
+            return
+
+        sumdy = 0
+
+        for change in self.linediffer.single_changes(0):
+            self._nopad = 1
+            dy = self.textview[0].get_y_for_line_num(change[2] - 1) - self.textview[1].get_y_for_line_num(change[4] - 1) - sumdy
+            sumdy = sumdy + dy
+
+            if dy >= 0:
+                panepad = 1
+                padline = change[4] - 1
+            else:
+                panepad = 0
+                padline = change[2] - 1
+                dy = -dy
+
+            tag = self.textbuffer[panepad].create_tag(**{ "pixels-below-lines": dy, "pixels-below-lines-set": True })
+            self.textbuffer[panepad].apply_tag(tag, self.textbuffer[panepad].get_iter_at_line(padline), self.textbuffer[panepad].get_iter_at_line(padline + 1))
+
     def on_textview_expose_event(self, textview, event):
         if self.num_panes == 1:
             return
@@ -1298,6 +1325,8 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
         context.rectangle(area.x, area.y, area.width, area.height)
         context.clip()
         context.set_line_width(1.0)
+
+        self.xxx_init_paddings()
 
         for change in self.linediffer.single_changes(pane, bounds):
             ypos0 = textview.get_y_for_line_num(change[1]) - visible.y
@@ -1551,7 +1580,14 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
         if self._sync_vscroll_lock:
             return
 
-        if not self._scroll_lock and (self.keymask & MASK_SHIFT) == 0:
+        # scrollbar influence 0->1->2 or 0<-1->2 or 0<-1<-2
+        scrollbar_influence = ((1, 2), (0, 2), (1, 0))
+
+        if 1: # FIXME: aligned mode
+            # all the scrollbars get the same raw adjustment
+            for i in scrollbar_influence[master][:self.num_panes - 1]:
+                self.scrolledwindow[i].get_vadjustment().set_value(adjustment.value)
+        elif not self._scroll_lock and (self.keymask & MASK_SHIFT) == 0:
             self._sync_vscroll_lock = True
             syncpoint = 0.5
 
@@ -1560,9 +1596,6 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
             it = self.textview[master].get_line_at_y(int(master_y))[0]
             line_y, height = self.textview[master].get_line_yrange(it)
             line = it.get_line() + ((master_y-line_y)/height)
-
-            # scrollbar influence 0->1->2 or 0<-1->2 or 0<-1<-2
-            scrollbar_influence = ((1, 2), (0, 2), (1, 0))
 
             for i in scrollbar_influence[master][:self.num_panes - 1]:
                 adj = self.scrolledwindow[i].get_vadjustment()
