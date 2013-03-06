@@ -1136,6 +1136,32 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
             mergeable = (False, False)
         self.actiongroup.get_action("MergeAll").set_sensitive(mergeable[0] or mergeable[1])
 
+    def __fix_paddings(self, chunks):
+        for change in chunks:
+            lrange = [None] * len(self.textbuffer)
+            if change[0]:
+                lrange[1] = change[0][1:3]
+                lrange[0] = change[0][3:5]
+                if not change[1]:
+                    lrange[2] = lrange[1] # FIXME: This is wrong. Make diffutil provide the line range for all panels all the time.
+            if change[1]:
+                lrange[1] = change[1][1:3]
+                lrange[2] = change[1][3:5]
+                if not change[0]:
+                    lrange[0] = lrange[1] # FIXME: Same as above.
+
+            endmin = min(r[1] for r in lrange)
+            if endmin == 0:
+                continue # FIXME: can't add padding before line 0 with pixels-below-lines
+            dy = [self.textview[i].get_dy_for_line_range(lrange[i][0], lrange[i][1]) for i in range(len(self.textbuffer))]
+            dymax = max(dy)
+
+            #print('lrange {} -> dy {}'.format(lrange, dy))
+            for i in range(len(self.textbuffer)):
+                self.textview[i].clean_pixels_below_for_line_range(lrange[i][0], lrange[i][1]) # FIXME
+                padding = dymax - dy[i]
+                self.textview[i].set_pixels_below_for_line_num(lrange[i][1] - 1, padding)
+
     def on_diffs_changed(self, linediffer, chunk_changes):
         removed_chunks, added_chunks, modified_chunks = chunk_changes
 
@@ -1143,6 +1169,21 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
         # re-highlight added and modified chunks.
         need_clearing = sorted(list(removed_chunks))
         need_highlighting = sorted(list(added_chunks) + [modified_chunks])
+
+        def all_chunks():
+            for x in removed_chunks:
+                print("removed: {}".format(x))
+                yield x
+            for x in added_chunks:
+                print("added: {}".format(x))
+                yield x
+            if modified_chunks: # only one?
+                print("modified: {}".format(modified_chunks))
+                yield modified_chunks
+
+        # FIXME: We can't fix the paddings at this point because the textview
+        # has not been refreshed yet so yranges are not real.
+        self.__fix_paddings(all_chunks())
 
         alltags = [b.get_tag_table().lookup("inline") for b in self.textbuffer]
 
@@ -1271,6 +1312,35 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
             self.text_filters = []
             self.refresh_comparison()
 
+    def draw_pattern(self, context, x0, y0, width, height):
+        m = -1.0
+        dy = 7.0
+        x1 = x0 + width
+        y1 = y0 + height
+        y = y0 + dy / 2
+        while True:
+            xi = x0 + (y1 - y) / m
+            xf = x0 + (y0 - y) / m
+            if xi >= x1:
+                break
+            if y < y1:
+                xa = x0
+                ya = y
+            else:
+                xa = xi
+                ya = y1
+            if xf < x1:
+                xb = xf
+                yb = y0
+            else:
+                xb = x1
+                yb = y + m * (x1 - x0)
+            context.move_to(xa, ya)
+            context.line_to(xb, yb)
+            y = y + dy
+        context.stroke()
+
+
     def on_textview_expose_event(self, textview, event):
         if self.num_panes == 1:
             return
@@ -1291,7 +1361,7 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
         x, y = textview.window_to_buffer_coords(gtk.TEXT_WINDOW_WIDGET,
                                                 area.x, area.y)
         bounds = (textview.get_line_num_for_y(y),
-                  textview.get_line_num_for_y(y + area.height + 1))
+                  textview.get_line_num_for_y(y + area.height) + 1)
 
         width, height = textview.allocation.width, textview.allocation.height
         context = event.window.cairo_create()
@@ -1300,11 +1370,12 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
         context.set_line_width(1.0)
 
         for change in self.linediffer.single_changes(pane, bounds):
-            ypos0 = textview.get_y_for_line_num(change[1]) - visible.y
-            ypos1 = textview.get_y_for_line_num(change[2]) - visible.y
+            ypos0, ypos1, padding = textview.get_y_for_line_range(change[1], change[2])
+            ypos0 = ypos0 - visible.y
+            ypos1 = ypos1 - visible.y
 
             context.rectangle(-0.5, ypos0 - 0.5, width + 1, ypos1 - ypos0)
-            if change[1] != change[2]:
+            if ypos0 != ypos1:
                 context.set_source_color(self.fill_colors[change[0]])
                 context.fill_preserve()
                 if self.linediffer.locate_chunk(pane, change[1])[0] == self.cursor.chunk:
@@ -1314,11 +1385,18 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
             context.set_source_color(self.line_colors[change[0]])
             context.stroke()
 
+            if padding > 0:
+                context.rectangle(-0.5, ypos1 + 0.5, width + 1, padding)
+                context.set_source_rgba(0.8, 0.8, 0.8, 0.25)
+                context.fill()
+                self.draw_pattern(context, -0.5, ypos1 + 0.5, width + 1, padding)
+
         if textview.is_focus() and self.cursor.line is not None:
             it = textbuffer.get_iter_at_line(self.cursor.line)
             ypos, line_height = textview.get_line_yrange(it)
             context.save()
-            context.rectangle(0, ypos - visible.y, width, line_height)
+            # do not highlight padding (pixels-below-lines)
+            context.rectangle(0, ypos - visible.y, width, line_height - textview.get_pixels_below_for_line_num(self.cursor.line))
             context.clip()
             context.set_source_color(self.highlight_color)
             context.paint_with_alpha(0.25)
@@ -1551,7 +1629,14 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
         if self._sync_vscroll_lock:
             return
 
-        if not self._scroll_lock and (self.keymask & MASK_SHIFT) == 0:
+        # scrollbar influence 0->1->2 or 0<-1->2 or 0<-1<-2
+        scrollbar_influence = ((1, 2), (0, 2), (1, 0))
+
+        if 1: # FIXME: aligned mode
+            # all the scrollbars get the same raw adjustment
+            for i in scrollbar_influence[master][:self.num_panes - 1]:
+                self.scrolledwindow[i].get_vadjustment().set_value(adjustment.value)
+        elif not self._scroll_lock and (self.keymask & MASK_SHIFT) == 0:
             self._sync_vscroll_lock = True
             syncpoint = 0.5
 
@@ -1560,9 +1645,6 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
             it = self.textview[master].get_line_at_y(int(master_y))[0]
             line_y, height = self.textview[master].get_line_yrange(it)
             line = it.get_line() + ((master_y-line_y)/height)
-
-            # scrollbar influence 0->1->2 or 0<-1->2 or 0<-1<-2
-            scrollbar_influence = ((1, 2), (0, 2), (1, 0))
 
             for i in scrollbar_influence[master][:self.num_panes - 1]:
                 adj = self.scrolledwindow[i].get_vadjustment()
