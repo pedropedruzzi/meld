@@ -196,5 +196,33 @@ class MeldSourceView(srcviewer.GtkTextView):
             return y + h - 1
         return y
 
+    def get_y_for_line_range(self, li, lf):
+        if lf > 0:
+            padding = self.get_pixels_below_for_line_num(lf - 1)
+        else:
+            padding = 0 # FIXME
+        yf = self.get_y_for_line_num(lf) - padding
+        if li == lf:
+            yi = yf
+        else:
+            yi = self.get_y_for_line_num(li)
+        return yi, yf, padding
+
     def get_line_num_for_y(self, y):
         return self.get_line_at_y(y)[0].get_line()
+
+    def get_pixels_below_for_line_num(self, line):
+        it = self.get_buffer().get_iter_at_line(line)
+        for tag in it.get_tags():
+            if tag.get_property("pixels-below-lines-set") == True:
+                return tag.get_property("pixels-below-lines")
+        return 0
+
+    def set_pixels_below_for_line_num(self, line, px):
+        buf = self.get_buffer()
+        tag = buf.create_tag()
+        tag.set_property("pixels-below-lines", px)
+        tag.set_property("pixels-below-lines-set", True)
+        it = buf.get_iter_at_line(line)
+        it2 = buf.get_iter_at_line(line + 1)
+        buf.apply_tag(tag, it, it2)
