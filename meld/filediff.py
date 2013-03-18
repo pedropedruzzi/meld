@@ -1295,8 +1295,7 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
                 padline = change[2] - 1
                 dy = -dy
 
-            tag = self.textbuffer[panepad].create_tag(**{ "pixels-below-lines": dy, "pixels-below-lines-set": True })
-            self.textbuffer[panepad].apply_tag(tag, self.textbuffer[panepad].get_iter_at_line(padline), self.textbuffer[panepad].get_iter_at_line(padline + 1))
+            self.textview[panepad].set_pixels_below_for_line_num(padline, dy)
 
     def on_textview_expose_event(self, textview, event):
         if self.num_panes == 1:
@@ -1330,8 +1329,9 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
 
         for change in self.linediffer.single_changes(pane, bounds):
             # include pixels-below-lines of the chunk
+            # TODO
             ypos1 = textview.get_y_for_line_num(change[2]) - visible.y
-            if change[1] == change[2] and change[1] > 0:
+            if change[1] == change[2] and change[1] > 0: # FIXME: what if change[1] == 0 ?
                 ypos0 = ypos1 - textview.get_pixels_below_for_line_num(change[1] - 1)
             else:
                 ypos0 = textview.get_y_for_line_num(change[1]) - visible.y
