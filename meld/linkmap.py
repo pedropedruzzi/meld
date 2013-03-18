@@ -164,6 +164,7 @@ class LinkMap(gtk.DrawingArea):
         rel_offset = [t.allocation.y - self.allocation.y for t in self.views]
 
         height = self.allocation.height
+        # FIXME
         visible = [self.views[0].get_line_num_for_y(pix_start[0]),
                    self.views[0].get_line_num_for_y(pix_start[0] + height),
                    self.views[1].get_line_num_for_y(pix_start[1]),
@@ -177,12 +178,26 @@ class LinkMap(gtk.DrawingArea):
         q_rad = math.pi / 2
 
         left, right = self.view_indices
+
+        # FIXME: remove
         view_offset_line = lambda v, l: self.views[v].get_y_for_line_num(l) - \
                                         pix_start[v] + rel_offset[v]
+
+        def view_offset_from_line_range(v, i, f):
+            o1 = self.views[v].get_y_for_line_num(f) - pix_start[v] + rel_offset[v]
+            if i == f and i > 0:
+                o0 = o1 - self.views[v].get_pixels_below_for_line_num(i - 1)
+                print("lines {} to {}, offsets: {}, {}".format(i, f, o0, o1))
+            else:
+                o0 = self.views[v].get_y_for_line_num(i) - pix_start[v] + rel_offset[v]
+            return o0, o1
+
         for c in self.filediff.linediffer.pair_changes(left, right, visible):
             # f and t are short for "from" and "to"
-            f0, f1 = [view_offset_line(0, l) for l in c[1:3]]
-            t0, t1 = [view_offset_line(1, l) for l in c[3:5]]
+            #f0, f1 = [view_offset_line(0, l) for l in c[1:3]]
+            #t0, t1 = [view_offset_line(1, l) for l in c[3:5]]
+            f0, f1 = view_offset_from_line_range(0, c[1], c[2])
+            t0, t1 = view_offset_from_line_range(1, c[3], c[4])
 
             culled = False
             # If either endpoint is completely off-screen, we cull for clarity
@@ -265,11 +280,23 @@ class LinkMap(gtk.DrawingArea):
             bounds.append(v.get_line_num_for_y(visible.y))
             bounds.append(v.get_line_num_for_y(visible.y + visible.height))
 
+        def view_offset_from_line_range(v, i, f):
+            o1 = self.views[v].get_y_for_line_num(f) - vis_offset[v] + rel_offset[v]
+            if i == f and i > 0:
+                o0 = o1 - self.views[v].get_pixels_below_for_line_num(i - 1)
+                print("lines {} to {}, offsets: {}, {}".format(i, f, o0, o1))
+            else:
+                o0 = self.views[v].get_y_for_line_num(i)
+            return o0, o1
+
+        # TODO: remove
         view_offset_line = lambda v, l: self.views[v].get_y_for_line_num(l) - \
                                         vis_offset[v] + rel_offset[v]
         for c in self.filediff.linediffer.pair_changes(src, dst, bounds):
-            f0, f1 = [view_offset_line(src_idx, l) for l in c[1:3]]
-            t0, t1 = [view_offset_line(dst_idx, l) for l in c[3:5]]
+            #f0, f1 = [view_offset_line(src_idx, l) for l in c[1:3]]
+            #t0, t1 = [view_offset_line(dst_idx, l) for l in c[3:5]]
+            f0, f1 = view_offset_from_line_range(src_idx, c[1], c[2])
+            t0, t1 = view_offset_from_line_range(dst_idx, c[3], c[4])
 
             f0 = view_offset_line(src_idx, c[1])
 

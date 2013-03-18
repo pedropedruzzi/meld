@@ -1284,7 +1284,7 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
 
         for change in self.linediffer.single_changes(0):
             self._nopad = 1
-            dy = self.textview[0].get_y_for_line_num(change[2] - 1) - self.textview[1].get_y_for_line_num(change[4] - 1) - sumdy
+            dy = self.textview[0].get_y_for_line_num(change[2]) - self.textview[1].get_y_for_line_num(change[4]) - sumdy
             sumdy = sumdy + dy
 
             if dy >= 0:
@@ -1318,7 +1318,7 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
         x, y = textview.window_to_buffer_coords(gtk.TEXT_WINDOW_WIDGET,
                                                 area.x, area.y)
         bounds = (textview.get_line_num_for_y(y),
-                  textview.get_line_num_for_y(y + area.height + 1))
+                  textview.get_line_num_for_y(y + area.height) + 1)
 
         width, height = textview.allocation.width, textview.allocation.height
         context = event.window.cairo_create()
@@ -1329,11 +1329,15 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
         self.xxx_init_paddings()
 
         for change in self.linediffer.single_changes(pane, bounds):
-            ypos0 = textview.get_y_for_line_num(change[1]) - visible.y
+            # include pixels-below-lines of the chunk
             ypos1 = textview.get_y_for_line_num(change[2]) - visible.y
+            if change[1] == change[2] and change[1] > 0:
+                ypos0 = ypos1 - textview.get_pixels_below_for_line_num(change[1] - 1)
+            else:
+                ypos0 = textview.get_y_for_line_num(change[1]) - visible.y
 
             context.rectangle(-0.5, ypos0 - 0.5, width + 1, ypos1 - ypos0)
-            if change[1] != change[2]:
+            if ypos0 != ypos1:
                 context.set_source_color(self.fill_colors[change[0]])
                 context.fill_preserve()
                 if self.linediffer.locate_chunk(pane, change[1])[0] == self.cursor.chunk:
@@ -1347,7 +1351,8 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
             it = textbuffer.get_iter_at_line(self.cursor.line)
             ypos, line_height = textview.get_line_yrange(it)
             context.save()
-            context.rectangle(0, ypos - visible.y, width, line_height)
+            # do not highlight padding (pixels-below-lines)
+            context.rectangle(0, ypos - visible.y, width, line_height - textview.get_pixels_below_for_line_num(self.cursor.line))
             context.clip()
             context.set_source_color(self.highlight_color)
             context.paint_with_alpha(0.25)

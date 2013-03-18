@@ -198,3 +198,12 @@ class MeldSourceView(srcviewer.GtkTextView):
 
     def get_line_num_for_y(self, y):
         return self.get_line_at_y(y)[0].get_line()
+
+    def get_pixels_below_for_line_num(self, line):
+        it = self.get_buffer().get_iter_at_line(line)
+        for tag in it.get_tags():
+            if tag.get_property("pixels-below-lines-set") == True:
+                return tag.get_property("pixels-below-lines")
+        return 0
+
+
