@@ -1143,22 +1143,32 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
                 lrange[1] = change[0][1:3]
                 lrange[0] = change[0][3:5]
                 if not change[1]:
-                    lrange[2] = lrange[1] # FIXME: This is wrong. Make diffutil provide the line range for all panels all the time.
+                    # Synthesize a fake 'Same' chunk and offset based on chunk
+                    # position within the other side.
+                    fake_chunk = self._synth_chunk(1, 2, lrange[1][0])
+                    fake_start = fake_chunk[3] + (lrange[1][0] - fake_chunk[1])
+                    fake_end = fake_chunk[3] + (lrange[1][1] - fake_chunk[1])
+                    lrange[2] = (fake_start, fake_end)
             if change[1]:
                 lrange[1] = change[1][1:3]
                 lrange[2] = change[1][3:5]
                 if not change[0]:
-                    lrange[0] = lrange[1] # FIXME: Same as above.
+                    # As above
+                    fake_chunk = self._synth_chunk(1, 0, lrange[1][0])
+                    fake_start = fake_chunk[3] + (lrange[1][0] - fake_chunk[1])
+                    fake_end = fake_chunk[3] + (lrange[1][1] - fake_chunk[1])
+                    lrange[0] = (fake_start, fake_end)
 
             endmin = min(r[1] for r in lrange)
             if endmin == 0:
                 continue # FIXME: can't add padding before line 0 with pixels-below-lines
-            dy = [self.textview[i].get_dy_for_line_range(lrange[i][0], lrange[i][1]) for i in range(len(self.textbuffer))]
+            dy = [self.textview[i].get_dy_for_line_range(lrange[i][0], lrange[i][1]) for i in range(self.num_panes)]
             dymax = max(dy)
 
             #print('lrange {} -> dy {}'.format(lrange, dy))
-            for i in range(len(self.textbuffer)):
-                self.textview[i].clean_pixels_below_for_line_range(lrange[i][0], lrange[i][1]) # FIXME
+            for i in range(self.num_panes):
+                self.textview[i].clean_pixels_below_for_line_range(
+                    lrange[i][0], lrange[i][1] - 1)
                 padding = dymax - dy[i]
                 self.textview[i].set_pixels_below_for_line_num(lrange[i][1] - 1, padding)
 
