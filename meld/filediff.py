@@ -1172,13 +1172,13 @@ class FileDiff(melddoc.MeldDoc, gnomeglade.Component):
 
         def all_chunks():
             for x in removed_chunks:
-                print("removed: {}".format(x))
+                print("removed: {0}".format(x))
                 yield x
             for x in added_chunks:
-                print("added: {}".format(x))
+                print("added: {0}".format(x))
                 yield x
             if modified_chunks: # only one?
-                print("modified: {}".format(modified_chunks))
+                print("modified: {0}".format(modified_chunks))
                 yield modified_chunks
 
         # FIXME: We can't fix the paddings at this point because the textview
